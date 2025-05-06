@@ -20,6 +20,22 @@ func NewNode(key string, score float64) *Node {
 	}
 }
 
+func (n *Node) Key() string {
+	if n == nil {
+		return ""
+	}
+
+	return n.key
+}
+
+func (n *Node) Score() (score float64) {
+	if n == nil {
+		return
+	}
+
+	return n.score
+}
+
 func (n *Node) Count() int {
 	if n == nil {
 		return 0
