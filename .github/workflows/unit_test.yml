@@ -1,22 +1,27 @@
-name: ZDB Unit Test
+name: Run Unit Tests
 
 on:
-  pull_request:
-    branches:
-      - "main"
   push:
     branches:
-      - "main"
+      - main
 
 jobs:
-  tests:
+  test:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v1
 
-      - name: Setup Go for use with actions
-        uses: actions/setup-go@v1.0.0
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          # The Go version to download (if necessary) and use. Example: 1.9.3
-          version: 1.24.1
-      - run: "make unit-test"
+          go-version: '1.24.1'
+
+      - name: Install dependencies
+        run: |
+          go mod tidy
+
+      - name: Run unit tests
+        run: |
+          make unit-test
