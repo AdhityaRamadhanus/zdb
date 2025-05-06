@@ -18,6 +18,10 @@ func NewReader(r io.Reader) *Reader {
 	return &Reader{br: br}
 }
 
+func (r *Reader) IsAllRead() bool {
+	return r.br.Buffered() == 0
+}
+
 func (r *Reader) ReadArrayHeader() (count int, err error) {
 	line, err := r.br.ReadString('\n')
 	if err != nil {
