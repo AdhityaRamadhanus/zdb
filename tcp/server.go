@@ -1,8 +1,8 @@
 package tcp
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 
@@ -10,6 +10,7 @@ import (
 	"github.com/AdhityaRamadhanus/zdb/commands"
 	"github.com/AdhityaRamadhanus/zdb/miniresp3"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 )
 
 var serverInfo = map[string]interface{}{
@@ -45,170 +46,193 @@ func NewServer(proto, addr string) *Server {
 	}
 }
 
-func (srv *Server) eventLoop() {
-	for ev := range srv.eventChan {
-		for _, evcmd := range ev.cmd {
-			//TODO: Maybe change to function map if it doesn't affect performance too much
-			switch evcmd.name {
-			case "hello":
-				ev.writer.AppendMap(serverInfo)
-			case "echo":
-				ev.writer.AppendBulkStr(evcmd.args[0])
-			case "ping":
-				ev.writer.AppendSimpleStr("OK")
-			case "shards":
-				lengths := srv.avlab.ShardStats()
-				ev.writer.AppendArrInt(lengths)
-			case "scan":
-				cmd := &commands.ScanCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				keys, nextCursor, err := srv.avlab.Scan(cmd)
-				if err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				ev.writer.AppendArrAny([]interface{}{nextCursor, keys})
-			case "zadd":
-				cmd := &commands.ZADDCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				success := srv.avlab.ZAdd(cmd)
-				ev.writer.AppendInt(success)
-			case "zcard":
-				cmd := &commands.ZCardCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				success := srv.avlab.ZCard(cmd)
-				ev.writer.AppendInt(success)
-			case "zcount":
-				cmd := &commands.ZCountCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				count := srv.avlab.ZCount(cmd)
-				ev.writer.AppendInt(count)
-			case "zrange":
-				cmd := &commands.ZRangeCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				nodes := srv.avlab.ZRange(cmd)
-				if cmd.WithScores {
-					ev.writer.AppendArrStr(zdb.Reduce(nodes, func(acc []string, n zdb.Node) []string {
-						acc = append(acc, n.Key())
-						acc = append(acc, fmt.Sprintf("%.2f", n.Score()))
-						return acc
-					}, []string{}))
-				} else {
-					ev.writer.AppendArrStr(zdb.Map(nodes, func(n zdb.Node) string {
-						return n.Key()
-					}))
-				}
-			case "zrank":
-				cmd := &commands.ZRankCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				success := srv.avlab.ZRank(cmd)
-				ev.writer.AppendInt(success)
-			case "zrem":
-				cmd := &commands.ZRemCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				success := srv.avlab.ZRem(cmd)
-				ev.writer.AppendInt(success)
-			case "zscan":
-				cmd := &commands.ZScanCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
-				keys, nextCursor := srv.avlab.ZScan(cmd)
-				ev.writer.AppendArrAny([]interface{}{nextCursor, keys})
-			case "zscore":
-				cmd := &commands.ZScoreCmd{}
-				if err := cmd.Build(evcmd.args); err != nil {
-					ev.writer.AppendSimpleError(err.Error())
-					continue
-				}
+func (srv *Server) eventLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("shutdown event loop")
+			return
+		case ev := <-srv.eventChan:
+			for _, evcmd := range ev.cmd {
+				//TODO: Maybe change to function map if it doesn't affect performance too much
+				switch evcmd.name {
+				case "hello":
+					ev.writer.AppendMap(serverInfo)
+				case "echo":
+					ev.writer.AppendBulkStr(evcmd.args[0])
+				case "ping":
+					ev.writer.AppendSimpleStr("OK")
+				case "shards":
+					lengths := srv.avlab.ShardStats()
+					ev.writer.AppendArrInt(lengths)
+				case "scan":
+					cmd := &commands.ScanCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					keys, nextCursor, err := srv.avlab.Scan(cmd)
+					if err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					ev.writer.AppendArrAny([]interface{}{nextCursor, keys})
+				case "zadd":
+					cmd := &commands.ZADDCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					success := srv.avlab.ZAdd(cmd)
+					ev.writer.AppendInt(success)
+				case "zcard":
+					cmd := &commands.ZCardCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					success := srv.avlab.ZCard(cmd)
+					ev.writer.AppendInt(success)
+				case "zcount":
+					cmd := &commands.ZCountCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					count := srv.avlab.ZCount(cmd)
+					ev.writer.AppendInt(count)
+				case "zrange":
+					cmd := &commands.ZRangeCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					nodes := srv.avlab.ZRange(cmd)
+					if cmd.WithScores {
+						ev.writer.AppendArrStr(zdb.Reduce(nodes, func(acc []string, n zdb.Node) []string {
+							acc = append(acc, n.Key())
+							acc = append(acc, fmt.Sprintf("%.2f", n.Score()))
+							return acc
+						}, []string{}))
+					} else {
+						ev.writer.AppendArrStr(zdb.Map(nodes, func(n zdb.Node) string {
+							return n.Key()
+						}))
+					}
+				case "zrank":
+					cmd := &commands.ZRankCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					success := srv.avlab.ZRank(cmd)
+					ev.writer.AppendInt(success)
+				case "zrem":
+					cmd := &commands.ZRemCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					success := srv.avlab.ZRem(cmd)
+					ev.writer.AppendInt(success)
+				case "zscan":
+					cmd := &commands.ZScanCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					keys, nextCursor := srv.avlab.ZScan(cmd)
+					ev.writer.AppendArrAny([]interface{}{nextCursor, keys})
+				case "zscore":
+					cmd := &commands.ZScoreCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
 
-				score, err := srv.avlab.ZScore(cmd)
-				if err != nil {
-					ev.writer.AppendNil()
-					continue
-				}
+					score, err := srv.avlab.ZScore(cmd)
+					if err != nil {
+						ev.writer.AppendNil()
+						continue
+					}
 
-				ev.writer.AppendFloat64(score)
-			default:
-				ev.writer.AppendSimpleStr("OK")
+					ev.writer.AppendFloat64(score)
+				default:
+					ev.writer.AppendSimpleStr("OK")
+				}
 			}
+			ev.writer.Write()
 		}
-
-		ev.writer.Write()
 	}
 }
 
-func (srv *Server) Run() {
+func (srv *Server) Run(ctx context.Context) error {
 	l, err := net.Listen(srv.proto, srv.addr)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer l.Close()
 
-	go srv.eventLoop()
+	log.Info().Str("proto", srv.proto).Str("addr", srv.addr).Msg("running server")
+	go srv.eventLoop(ctx)
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					log.Error().Err(err).Msg("error in accepting connection")
+					continue
+				}
+			}
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("error in accepting conn", err)
-			continue
-		}
-
-		go srv.handleClient(conn)
-	}
-}
-
-func (srv *Server) handleClient(conn net.Conn) (err error) {
-	defer func() {
-		if err != nil && err.Error() != "EOF" {
-			log.Println(err)
-		} else {
-			log.Println("Closing Connection")
+			log.Info().Str("raddr", conn.RemoteAddr().String()).Msg("accepting connection")
+			go srv.handleClient(ctx, conn)
 		}
 	}()
 
-	errChan := make(chan error, 10)
-	go srv.handleData(conn, errChan)
-	for err := range errChan {
-		return err
+	for range ctx.Done() {
+		break
 	}
 
 	return nil
 }
 
-func (srv *Server) handleData(conn net.Conn, errChan chan<- error) (err error) {
+func (srv *Server) handleClient(ctx context.Context, conn net.Conn) (err error) {
 	defer func() {
-		if err != nil {
-			errChan <- err
+		if err != nil && err.Error() != "EOF" {
+			log.Error().Err(err).Str("raddr", conn.RemoteAddr().String()).Msg("error in handle client")
+		} else {
+			log.Info().Str("raddr", conn.RemoteAddr().String()).Msg("closing connection")
 		}
+
+		conn.Close()
+	}()
+
+	doneChan := make(chan error, 10)
+	go srv.handleData(conn, doneChan)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case err := <-doneChan:
+			return err
+		}
+	}
+}
+
+func (srv *Server) handleData(conn net.Conn, doneChan chan<- error) (err error) {
+	defer func() {
+		doneChan <- err
 	}()
 
 	r := miniresp3.NewReader(conn)
 	w := miniresp3.NewWriter(conn)
 	cmds := []dataCmd{}
 	for {
+		// blocking the loop, return err on closed connection
 		arrayCount, err := r.ReadArrayHeader()
 		if err != nil {
 			return err

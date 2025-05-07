@@ -1,8 +1,6 @@
 package zdb
 
 import (
-	"fmt"
-
 	"github.com/AdhityaRamadhanus/zdb/commands"
 )
 
@@ -175,7 +173,6 @@ func (zdb *ZDB) ZScan(cmd *commands.ZScanCmd) (keys []string, nextCursor string)
 	if cmd.ScanCmd.Cursor != "0" {
 		score, err := tree.GetScore(cmd.ScanCmd.Cursor)
 		if err != nil {
-			fmt.Println("error in getting score of cursor")
 			return
 		}
 
