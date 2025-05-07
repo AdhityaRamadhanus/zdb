@@ -31,9 +31,12 @@ func (s *Shard) GetDBFromKey(key string) OrderStatisticTree {
 	return db[key]
 }
 
-func (s *Shard) AddDB(key string) OrderStatisticTree {
+func (s *Shard) UpsertDB(key string, tree OrderStatisticTree) OrderStatisticTree {
+	if tree == nil {
+		tree = NewTree()
+	}
 	shardIdx := int(s.hash.Sum64(key) & s.mask)
-	s.DB[shardIdx][key] = NewTree()
+	s.DB[shardIdx][key] = tree
 	s.Keys.Add(key, float64(time.Now().Unix()))
 	return s.DB[shardIdx][key]
 }

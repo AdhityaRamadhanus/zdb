@@ -8,6 +8,7 @@ import (
 
 	"github.com/AdhityaRamadhanus/zdb"
 	"github.com/AdhityaRamadhanus/zdb/commands"
+	"github.com/AdhityaRamadhanus/zdb/encoding/resp"
 	"github.com/AdhityaRamadhanus/zdb/miniresp3"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -101,6 +102,38 @@ func (srv *Server) eventLoop(ctx context.Context) {
 					}
 					count := srv.avlab.ZCount(cmd)
 					ev.writer.AppendInt(count)
+				case "zdiff":
+					cmd := &commands.ZDiffCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					diff := srv.avlab.ZDiff(cmd)
+					resp.SerializeTree(ev.writer, diff, cmd.WithScores)
+				case "zdiffstore":
+					cmd := &commands.ZDiffStoreCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					count := srv.avlab.ZDiffStore(cmd)
+					ev.writer.AppendInt(count)
+				case "zinter":
+					cmd := &commands.ZInterCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					diff := srv.avlab.ZInter(cmd)
+					resp.SerializeTree(ev.writer, diff, cmd.WithScores)
+				case "zinterstore":
+					cmd := &commands.ZDiffStoreCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					count := srv.avlab.ZDiffStore(cmd)
+					ev.writer.AppendInt(count)
 				case "zrange":
 					cmd := &commands.ZRangeCmd{}
 					if err := cmd.Build(evcmd.args); err != nil {
@@ -157,6 +190,23 @@ func (srv *Server) eventLoop(ctx context.Context) {
 					}
 
 					ev.writer.AppendFloat64(score)
+				case "zunion":
+					cmd := &commands.ZUnionCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					diff := srv.avlab.ZUnion(cmd)
+					resp.SerializeTree(ev.writer, diff, cmd.WithScores)
+					ev.writer.Write()
+				case "zunionstore":
+					cmd := &commands.ZUnionStoreCmd{}
+					if err := cmd.Build(evcmd.args); err != nil {
+						ev.writer.AppendSimpleError(err.Error())
+						continue
+					}
+					count := srv.avlab.ZUnionStore(cmd)
+					ev.writer.AppendInt(count)
 				default:
 					ev.writer.AppendSimpleStr("OK")
 				}

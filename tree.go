@@ -13,6 +13,10 @@ func NewTree() OrderStatisticTree {
 	}
 }
 
+func (t *Tree) IsEmpty() bool {
+	return t == nil || t.root == nil
+}
+
 func (t *Tree) Root() *Node {
 	if t == nil {
 		return nil

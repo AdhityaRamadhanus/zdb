@@ -30,6 +30,7 @@ var (
 
 type OrderStatisticTree interface {
 	// CRUD
+	IsEmpty() bool
 	Root() *Node
 	GetScore(key string) (float64, error)
 	Add(key string, score float64)

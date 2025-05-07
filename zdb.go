@@ -66,7 +66,8 @@ func (zdb *ZDB) Scan(cmd *commands.ScanCmd) (keys []string, nextCursor string, e
 func (zdb *ZDB) ZAdd(cmd *commands.ZADDCmd) int {
 	tree := zdb.shards.GetDBFromKey(cmd.Key)
 	if tree == nil {
-		tree = zdb.shards.AddDB(cmd.Key)
+		tree = NewTree()
+		tree = zdb.shards.UpsertDB(cmd.Key, tree)
 	}
 
 	success := 0
@@ -94,6 +95,69 @@ func (zdb *ZDB) ZCount(cmd *commands.ZCountCmd) int {
 	}
 
 	return tree.CountByScore(cmd.Min, cmd.Max)
+}
+
+func (zdb *ZDB) ZDiff(cmd *commands.ZDiffCmd) OrderStatisticTree {
+	diff := zdb.shards.GetDBFromKey(cmd.Keys[0])
+	if diff == nil {
+		return nil
+	}
+
+	for i := 1; i < len(cmd.Keys); i++ {
+		other := zdb.shards.GetDBFromKey(cmd.Keys[i])
+		if other == nil {
+			return nil
+		}
+
+		diff = diff.Diff(other)
+	}
+
+	return diff
+}
+
+func (zdb *ZDB) ZDiffStore(cmd *commands.ZDiffStoreCmd) int {
+	diff := zdb.ZDiff(&cmd.ZDiffCmd)
+	zdb.shards.UpsertDB(cmd.DstKey, diff)
+	if diff.IsEmpty() {
+		return 0
+	}
+	return diff.Root().count
+}
+
+func (zdb *ZDB) ZInter(cmd *commands.ZInterCmd) OrderStatisticTree {
+	inter := zdb.shards.GetDBFromKey(cmd.Keys[0])
+	if inter == nil {
+		return nil
+	}
+
+	for i := 1; i < len(cmd.Keys); i++ {
+		aggFunc := SumAggFunc(cmd.Weights[i-1], cmd.Weights[i])
+		switch cmd.Aggregate {
+		case "max":
+			aggFunc = MaxAggFunc(cmd.Weights[i-1], cmd.Weights[i])
+		case "min":
+			aggFunc = MinAggFunc(cmd.Weights[i-1], cmd.Weights[i])
+		}
+
+		other := zdb.shards.GetDBFromKey(cmd.Keys[i])
+		if other == nil {
+			return nil
+		}
+
+		inter = inter.Inter(other, aggFunc)
+	}
+
+	return inter
+}
+
+func (zdb *ZDB) ZInterStore(cmd *commands.ZInterStoreCmd) int {
+	inter := zdb.ZInter(&cmd.ZInterCmd)
+	zdb.shards.UpsertDB(cmd.DstKey, inter)
+
+	if inter.IsEmpty() {
+		return 0
+	}
+	return inter.Root().count
 }
 
 func (zdb *ZDB) ZRank(cmd *commands.ZRankCmd) int {
@@ -211,4 +275,41 @@ func (zdb *ZDB) ZScore(cmd *commands.ZScoreCmd) (float64, error) {
 	}
 
 	return tree.GetScore(cmd.Member)
+}
+
+func (zdb *ZDB) ZUnion(cmd *commands.ZUnionCmd) OrderStatisticTree {
+	union := zdb.shards.GetDBFromKey(cmd.Keys[0])
+	if union == nil {
+		return nil
+	}
+
+	for i := 1; i < len(cmd.Keys); i++ {
+		aggFunc := SumAggFunc(cmd.Weights[i-1], cmd.Weights[i])
+		switch cmd.Aggregate {
+		case "max":
+			aggFunc = MaxAggFunc(cmd.Weights[i-1], cmd.Weights[i])
+		case "min":
+			aggFunc = MinAggFunc(cmd.Weights[i-1], cmd.Weights[i])
+		}
+
+		other := zdb.shards.GetDBFromKey(cmd.Keys[1])
+		if other == nil {
+			return nil
+		}
+
+		union = union.Union(other, aggFunc)
+	}
+
+	return union
+}
+
+func (zdb *ZDB) ZUnionStore(cmd *commands.ZUnionStoreCmd) int {
+	union := zdb.ZUnion(&cmd.ZUnionCmd)
+	zdb.shards.UpsertDB(cmd.DstKey, union)
+
+	if union.IsEmpty() {
+		return 0
+	}
+
+	return union.Root().count
 }
